@@ -8,6 +8,7 @@ import 'package:unisafe/admin/Adminprofile.dart';
 import 'package:unisafe/admin/Authfile.dart';
 import 'package:unisafe/admin/adminscreen.dart';
 import 'package:unisafe/students/Dashboard.dart';
+import 'package:unisafe/students/StudentAuth.dart';
 import 'package:unisafe/welcome/Splashscreen.dart';
 import 'package:unisafe/welcome/Startedpage.dart';
 
@@ -35,6 +36,7 @@ class MyApp extends StatelessWidget {
         "/admindash": (context) => AdminDashboard(),
         "/adminauth": (context) => Authfile(),
         "/student": (context) => Dashboard(),
+        "/studentauth": (context) => const StudentAuth(),
         "/start": (context) => Startedpage(),
         "/admin": (context) => AdminProfile(),
       },

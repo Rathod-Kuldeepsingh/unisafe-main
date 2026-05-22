@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Startedpage extends StatelessWidget {
   const Startedpage({super.key});
@@ -64,10 +65,21 @@ class Startedpage extends StatelessWidget {
                   context: context,
                   screenWidth: screenWidth,
                   title: "Continue as Student",
-                  subtitle: "Report incidents anonymously",
+                  subtitle: "Report incidents securely",
                   icon: Icons.person_outlined,
-                  onTap: () {
-                    Navigator.pushNamed(context, '/student');
+                  onTap: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    final isStudentLoggedIn =
+                        prefs.getBool('isStudentLoggedIn') ?? false;
+                    final session = Supabase.instance.client.auth.currentSession;
+
+                    if (!context.mounted) return;
+
+                    if (isStudentLoggedIn && session != null) {
+                      Navigator.pushNamed(context, '/student');
+                    } else {
+                      Navigator.pushNamed(context, '/studentauth');
+                    }
                   },
                 ),
 
@@ -82,6 +94,8 @@ class Startedpage extends StatelessWidget {
                     final prefs = await SharedPreferences.getInstance();
                     final isAdminLoggedIn =
                         prefs.getBool('isAdminLoggedIn') ?? false;
+
+                    if (!context.mounted) return;
 
                     if (isAdminLoggedIn) {
                       Navigator.pushReplacementNamed(context, '/admindash');

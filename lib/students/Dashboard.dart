@@ -9,6 +9,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Dashboard extends StatefulWidget {
@@ -431,6 +432,60 @@ class _DashboardState extends State<Dashboard> {
             ),
           ),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout_rounded, color: Colors.white),
+            tooltip: 'Logout',
+            onPressed: () async {
+              final confirm = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  backgroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  title: Text(
+                    'Logout',
+                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                  ),
+                  content: Text(
+                    'Are you sure you want to log out?',
+                    style: GoogleFonts.inter(),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.inter(color: Colors.black87),
+                      ),
+                    ),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                      ),
+                      onPressed: () => Navigator.pop(context, true),
+                      child: Text(
+                        'Logout',
+                        style: GoogleFonts.inter(color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+
+              if (confirm == true) {
+                await Supabase.instance.client.auth.signOut();
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setBool('isStudentLoggedIn', false);
+                Navigator.pushNamedAndRemoveUntil(context, '/start', (route) => false);
+              }
+            },
+          ),
+        ],
       ),
 
       backgroundColor: Colors.white,
@@ -438,6 +493,7 @@ class _DashboardState extends State<Dashboard> {
       body: SingleChildScrollView(
         child: Column(
           children: [
+            _buildWelcomeBanner(responsiveFont),
             SizedBox(height: screenHeight * 0.01),
 
             // ================= IMAGE TITLE =================
@@ -725,6 +781,52 @@ class _DashboardState extends State<Dashboard> {
             const SizedBox(height: 30),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildWelcomeBanner(double Function(double) responsiveFont) {
+    final user = Supabase.instance.client.auth.currentUser;
+    final email = user?.email ?? '';
+    final name = user?.userMetadata?['name'] ?? 'Student';
+
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Colors.blue.shade700, Colors.blue.shade500],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black12,
+            blurRadius: 6,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            "Welcome, $name!",
+            style: GoogleFonts.inter(
+              fontSize: responsiveFont(18),
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            email,
+            style: GoogleFonts.inter(
+              fontSize: responsiveFont(12),
+              color: Colors.white70,
+            ),
+          ),
+        ],
       ),
     );
   }
