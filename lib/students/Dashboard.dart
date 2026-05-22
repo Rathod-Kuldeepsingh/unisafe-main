@@ -1,6 +1,7 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously
 
 import 'dart:io';
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -29,12 +30,47 @@ class _DashboardState extends State<Dashboard> {
 
   bool isUploading = false;
   bool isLoading = false;
+  bool isSubmitting = false;
+  String? studentNameFromPrefs;
 
   // GPS coordinates
   double? latitude;
   double? longitude;
 
   final picker = ImagePicker();
+
+  @override
+  void initState() {
+    super.initState();
+    _checkRoleAndLoad();
+  }
+
+  Future<void> _checkRoleAndLoad() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null || session.user.userMetadata?['role'] != 'student') {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isStudentLoggedIn', false);
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (_) {}
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/start', (route) => false);
+      }
+      return;
+    }
+    await _loadStudentName();
+  }
+
+  Future<void> _loadStudentName() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        studentNameFromPrefs = prefs.getString('studentName');
+      });
+    } catch (e) {
+      print("Error loading student name: $e");
+    }
+  }
 
   // ================= SUCCESS MESSAGE =================
 
@@ -289,11 +325,16 @@ class _DashboardState extends State<Dashboard> {
   }) async {
     final supabase = Supabase.instance.client;
 
+    setState(() {
+      isSubmitting = true;
+    });
+
     try {
       print("Lat: $latitude");
       print("Lng: $longitude");
 
-      await supabase.from('incident_reports').insert({
+      final currentUser = supabase.auth.currentUser;
+      final inserted = await supabase.from('incident_reports').insert({
         'title': title,
         'image_url': imageUrl,
         'description': description,
@@ -302,9 +343,26 @@ class _DashboardState extends State<Dashboard> {
         // GPS coordinates
         'latitude': latitude,
         'longitude': longitude,
-      });
+        'status': 'Pending',
+        'admin_remark': '',
+        'student_email': currentUser?.email ?? '',
+      }).select();
 
       print("✅ Report submitted successfully.");
+
+      // Save report ID in SharedPreferences
+      if (inserted.isNotEmpty) {
+        final newReportId = inserted.first['id'].toString();
+        final user = supabase.auth.currentUser;
+        if (user != null && user.email != null) {
+          final prefs = await SharedPreferences.getInstance();
+          final key = 'student_reports_${user.email}';
+          List<String> reportIds = prefs.getStringList(key) ?? [];
+          reportIds.add(newReportId);
+          await prefs.setStringList(key, reportIds);
+          print("Saved report ID $newReportId to SharedPreferences under $key");
+        }
+      }
 
       setState(() {
         _imageFile = null;
@@ -399,386 +457,579 @@ class _DashboardState extends State<Dashboard> {
       );
     } catch (error) {
       print("error submitting report: $error");
-
       _showError("Failed to submit report");
+    } finally {
+      setState(() {
+        isSubmitting = false;
+      });
     }
+  }
+
+   String _resolveStudentName(User? user) {
+    if (studentNameFromPrefs != null && studentNameFromPrefs!.trim().isNotEmpty) {
+      return studentNameFromPrefs!.trim();
+    }
+    final metaName = user?.userMetadata?['name'];
+    if (metaName != null && metaName.toString().trim().isNotEmpty) {
+      return metaName.toString().trim();
+    }
+    final metaFullName = user?.userMetadata?['full_name'];
+    if (metaFullName != null && metaFullName.toString().trim().isNotEmpty) {
+      return metaFullName.toString().trim();
+    }
+    final email = user?.email;
+    if (email != null && email.contains('@')) {
+      final part = email.split('@').first;
+      final words = part.split(RegExp(r'[._-]'));
+      final capitalized = words.map((w) {
+        if (w.isEmpty) return '';
+        return w[0].toUpperCase() + w.substring(1);
+      }).join(' ');
+      if (capitalized.trim().isNotEmpty) {
+        return capitalized.trim();
+      }
+    }
+    return 'Student';
   }
 
   @override
   Widget build(BuildContext context) {
-    final screenHeight =
-        MediaQuery.of(context).size.height;
+    final screenWidth = MediaQuery.of(context).size.width;
 
-    final screenWidth =
-        MediaQuery.of(context).size.width;
-
-    double responsiveFont(double size) =>
-        screenWidth * (size / 375);
+    double responsiveFont(double size) => screenWidth * (size / 375);
 
     return Scaffold(
+      backgroundColor: Colors.grey.shade50,
       appBar: AppBar(
         automaticallyImplyLeading: false,
         iconTheme: const IconThemeData(
           color: Colors.white,
         ),
-        backgroundColor: Colors.blue.shade700,
+        backgroundColor: Colors.indigo.shade800,
+        elevation: 0,
         title: Text(
-          "Report",
+          "UniSafe Report",
           style: GoogleFonts.inter(
             textStyle: TextStyle(
-              fontSize: responsiveFont(24),
+              fontSize: responsiveFont(20),
               color: Colors.white,
-              fontWeight: FontWeight.w600,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
             ),
           ),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout_rounded, color: Colors.white),
-            tooltip: 'Logout',
-            onPressed: () async {
-              final confirm = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  backgroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  title: Text(
-                    'Logout',
-                    style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-                  ),
-                  content: Text(
-                    'Are you sure you want to log out?',
-                    style: GoogleFonts.inter(),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: Text(
-                        'Cancel',
-                        style: GoogleFonts.inter(color: Colors.black87),
-                      ),
-                    ),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      onPressed: () => Navigator.pop(context, true),
-                      child: Text(
-                        'Logout',
-                        style: GoogleFonts.inter(color: Colors.white),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-
-              if (confirm == true) {
-                await Supabase.instance.client.auth.signOut();
-                final prefs = await SharedPreferences.getInstance();
-                await prefs.setBool('isStudentLoggedIn', false);
-                Navigator.pushNamedAndRemoveUntil(context, '/start', (route) => false);
-              }
-            },
-          ),
-        ],
       ),
-
-      backgroundColor: Colors.white,
-
       body: SingleChildScrollView(
         child: Column(
           children: [
             _buildWelcomeBanner(responsiveFont),
-            SizedBox(height: screenHeight * 0.01),
-
-            // ================= IMAGE TITLE =================
-
-            Row(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.only(
-                    left: 10,
-                    top: 10,
-                  ),
-                  child: Text(
-                    'Add Incident Photo',
-                    style: GoogleFonts.inter(
-                      textStyle: TextStyle(
-                        fontSize: responsiveFont(14),
-                        color: Colors.black,
-                        fontWeight: FontWeight.w700,
+            
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  
+                  // ================= IMAGE PICKER CARD =================
+                  Card(
+                    color: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: Colors.grey.shade200, width: 1),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Incident Photo',
+                            style: GoogleFonts.inter(
+                              fontSize: responsiveFont(14),
+                              color: Colors.black87,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          
+                          if (_imageFile != null)
+                            Stack(
+                              children: [
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: Image.file(
+                                    _imageFile!,
+                                    height: 200,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 10,
+                                  right: 10,
+                                  child: GestureDetector(
+                                    onTap: () {
+                                      setState(() {
+                                        _imageFile = null;
+                                        _uploadedImageUrl = null;
+                                      });
+                                    },
+                                    child: Container(
+                                      padding: const EdgeInsets.all(6),
+                                      decoration: const BoxDecoration(
+                                        color: Colors.black54,
+                                        shape: BoxShape.circle,
+                                      ),
+                                      child: const Icon(
+                                        Icons.close_rounded,
+                                        color: Colors.white,
+                                        size: 18,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          else
+                            CustomPaint(
+                              painter: DashedBorderPainter(
+                                color: Colors.grey.shade300,
+                                borderRadius: 16,
+                              ),
+                              child: Container(
+                                height: 160,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      Icons.add_a_photo_outlined,
+                                      size: 40,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      "No image selected",
+                                      style: GoogleFonts.inter(
+                                        fontSize: 14,
+                                        color: Colors.grey.shade500,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      "Take a picture or select from gallery",
+                                      style: GoogleFonts.inter(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          
+                          const SizedBox(height: 16),
+                          
+                          Row(
+                            children: [
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _pickImage(ImageSource.camera),
+                                  icon: Icon(Icons.camera_alt_outlined, size: 18, color: Colors.indigo.shade800),
+                                  label: Text(
+                                    "Camera",
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.indigo.shade800,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: BorderSide(color: Colors.indigo.shade100),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: OutlinedButton.icon(
+                                  onPressed: () => _pickImage(ImageSource.gallery),
+                                  icon: Icon(Icons.photo_library_outlined, size: 18, color: Colors.indigo.shade800),
+                                  label: Text(
+                                    "Gallery",
+                                    style: GoogleFonts.inter(
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.indigo.shade800,
+                                    ),
+                                  ),
+                                  style: OutlinedButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    side: BorderSide(color: Colors.indigo.shade100),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          
+                          if (isUploading) ...[
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const SizedBox(
+                                    width: 16,
+                                    height: 16,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      color: Colors.indigo,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Text(
+                                    "Uploading image...",
+                                    style: GoogleFonts.inter(
+                                      fontSize: 13,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                     ),
                   ),
-                ),
-              ],
-            ),
-
-            // ================= IMAGE SECTION =================
-
-            Padding(
-              padding: const EdgeInsets.all(2),
-              child: Container(
-                color: Colors.white,
-                child: Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      ClipRRect(
-                        borderRadius:
-                            BorderRadius.circular(12),
-                        child: _imageFile != null
-                            ? Image.file(
-                                _imageFile!,
-                                height: 200,
-                                fit: BoxFit.cover,
-                              )
-                            : Container(
-                                height: 200,
-                                width: double.infinity,
-                                color: Colors.grey[300],
-                                child: const Icon(
-                                  Icons.image,
-                                  size: 60,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                      ),
-
-                      SizedBox(
-                        height: screenHeight * 0.030,
-                      ),
-
-                      Row(
+                  
+                  const SizedBox(height: 16),
+                  
+                  // ================= DETAILS CARD =================
+                  Card(
+                    color: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: Colors.grey.shade200, width: 1),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  _pickImage(
-                                ImageSource.camera,
-                              ),
-                              icon: const Icon(
-                                Icons.camera_alt,
-                                color: Colors.white,
-                              ),
-                              label: Text(
-                                "Camera",
+                          Row(
+                            children: [
+                              Icon(Icons.assignment_outlined, color: Colors.indigo.shade800, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Incident Details',
                                 style: GoogleFonts.inter(
-                                  textStyle: TextStyle(
-                                    fontSize:
-                                        responsiveFont(14),
-                                    color: Colors.white,
-                                    fontWeight:
-                                        FontWeight.w600,
-                                  ),
+                                  fontSize: responsiveFont(14),
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                              style:
-                                  ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Colors.blue.shade700,
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          TextField(
+                            controller: titleController,
+                            style: GoogleFonts.inter(color: Colors.black87),
+                            decoration: InputDecoration(
+                              labelText: "Incident Title",
+                              hintText: "Enter a brief title",
+                              prefixIcon: Icon(Icons.edit_note_rounded, color: Colors.indigo.shade800),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              labelStyle: GoogleFonts.inter(color: Colors.grey.shade600),
+                              hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.indigo.shade800, width: 1.5),
                               ),
                             ),
                           ),
-
-                          SizedBox(
-                            width: screenWidth * 0.030,
-                          ),
-
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: () =>
-                                  _pickImage(
-                                ImageSource.gallery,
+                          
+                          const SizedBox(height: 16),
+                          
+                          TextField(
+                            controller: descriptionController,
+                            maxLines: 4,
+                            style: GoogleFonts.inter(color: Colors.black87),
+                            decoration: InputDecoration(
+                              labelText: "Incident Description",
+                              hintText: "Provide details of the incident...",
+                              prefixIcon: Icon(Icons.description_outlined, color: Colors.indigo.shade800),
+                              filled: true,
+                              fillColor: Colors.grey.shade50,
+                              alignLabelWithHint: true,
+                              labelStyle: GoogleFonts.inter(color: Colors.grey.shade600),
+                              hintStyle: GoogleFonts.inter(color: Colors.grey.shade400),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.grey.shade200),
                               ),
-                              icon: const Icon(
-                                Icons.photo_library,
-                                color: Colors.white,
-                              ),
-                              label: Text(
-                                "Gallery",
-                                style: GoogleFonts.inter(
-                                  textStyle: TextStyle(
-                                    fontSize:
-                                        responsiveFont(14),
-                                    color: Colors.white,
-                                    fontWeight:
-                                        FontWeight.w600,
-                                  ),
-                                ),
-                              ),
-                              style:
-                                  ElevatedButton.styleFrom(
-                                backgroundColor:
-                                    Colors.blue.shade700,
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(color: Colors.indigo.shade800, width: 1.5),
                               ),
                             ),
                           ),
                         ],
                       ),
-
-                      if (isUploading) ...[
-                        const SizedBox(height: 20),
-
-                        const CircularProgressIndicator(
-                          color: Colors.teal,
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // ================= LOCATION CARD =================
+                  Card(
+                    color: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: BorderSide(color: Colors.grey.shade200, width: 1),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.location_on_outlined, color: Colors.indigo.shade800, size: 20),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Location Details',
+                                style: GoogleFonts.inter(
+                                  fontSize: responsiveFont(14),
+                                  color: Colors.black87,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _getCurrentLocation,
+                              icon: const Icon(Icons.my_location_rounded, color: Colors.white, size: 18),
+                              label: Text(
+                                "Use My Location",
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.indigo.shade800,
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                elevation: 0,
+                              ),
+                            ),
+                          ),
+                          
+                          if (isLoading) ...[
+                            const SizedBox(height: 16),
+                            Center(
+                              child: Platform.isIOS
+                                  ? const CupertinoActivityIndicator(radius: 12)
+                                  : CircularProgressIndicator(color: Colors.indigo.shade800),
+                            ),
+                          ],
+                          
+                          if (locationController.text.isNotEmpty) ...[
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade50,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.grey.shade200),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.place_rounded, color: Colors.indigo.shade800, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      locationController.text,
+                                      style: GoogleFonts.inter(
+                                        fontSize: 13,
+                                        color: Colors.black87,
+                                        height: 1.4,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                          
+                          if (latitude != null && longitude != null) ...[
+                            const SizedBox(height: 12),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.indigo.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.indigo.shade100),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.gps_fixed_rounded, size: 14, color: Colors.indigo.shade800),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            "Lat: ${latitude!.toStringAsFixed(5)}",
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              color: Colors.indigo.shade900,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.indigo.shade50,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: Colors.indigo.shade100),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.gps_fixed_rounded, size: 14, color: Colors.indigo.shade800),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            "Lng: ${longitude!.toStringAsFixed(5)}",
+                                            style: GoogleFonts.inter(
+                                              fontSize: 12,
+                                              color: Colors.indigo.shade900,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // ================= SUBMIT GRADIENT BUTTON =================
+                  Container(
+                    width: double.infinity,
+                    height: 54,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.indigo.shade800, Colors.blue.shade700],
+                      ),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.indigo.shade800.withOpacity(0.25),
+                          blurRadius: 12,
+                          offset: const Offset(0, 6),
                         ),
                       ],
-                    ],
-                  ),
-                ),
-              ),
-            ),
-
-            // ================= TITLE =================
-
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: TextField(
-                controller: titleController,
-                decoration: InputDecoration(
-                  hintText: "Report Title",
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-
-            // ================= DESCRIPTION =================
-
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: TextField(
-                controller: descriptionController,
-                maxLines: 5,
-                decoration: InputDecoration(
-                  hintText: "Incident Description",
-                  border: OutlineInputBorder(
-                    borderRadius:
-                        BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
-
-            // ================= LOCATION =================
-
-            ElevatedButton.icon(
-              onPressed: _getCurrentLocation,
-              icon: const Icon(
-                Icons.my_location,
-                color: Colors.white,
-              ),
-              label: Text(
-                "Use My Location",
-                style: GoogleFonts.inter(
-                  color: Colors.white,
-                ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
-              ),
-            ),
-
-            const SizedBox(height: 10),
-
-            if (isLoading)
-              Platform.isIOS
-                  ? const CupertinoActivityIndicator(
-                      radius: 12,
-                    )
-                  : CircularProgressIndicator(
-                      color: Colors.blue.shade700,
                     ),
-
-            if (locationController.text.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(12),
-                child: Text(
-                  locationController.text,
-                  style: GoogleFonts.inter(
-                    fontSize: 13,
-                  ),
-                ),
-              ),
-
-            // ================= LAT LNG VIEW =================
-
-            if (latitude != null && longitude != null)
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Column(
-                  children: [
-                    Text(
-                      "Latitude: $latitude",
-                      style: GoogleFonts.inter(),
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: isSubmitting
+                            ? null
+                            : () {
+                                if (_uploadedImageUrl != null &&
+                                    titleController.text.isNotEmpty &&
+                                    descriptionController.text.isNotEmpty &&
+                                    locationController.text.isNotEmpty) {
+                                  _submitReport(
+                                    title: titleController.text,
+                                    imageUrl: _uploadedImageUrl!,
+                                    description: descriptionController.text,
+                                    location: locationController.text,
+                                  );
+                                } else {
+                                  _showError(
+                                    "Please fill all details and upload an image",
+                                  );
+                                }
+                              },
+                        child: Center(
+                          child: isSubmitting
+                              ? const SizedBox(
+                                  height: 24,
+                                  width: 24,
+                                  child: CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 2.5,
+                                  ),
+                                )
+                              : Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      "Submit Incident Report",
+                                      style: GoogleFonts.inter(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.send_rounded, color: Colors.white, size: 18),
+                                  ],
+                                ),
+                        ),
+                      ),
                     ),
-                    Text(
-                      "Longitude: $longitude",
-                      style: GoogleFonts.inter(),
-                    ),
-                  ],
-                ),
-              ),
-
-            SizedBox(height: screenHeight * 0.03),
-
-            // ================= SUBMIT =================
-
-            ElevatedButton(
-              onPressed: () {
-                if (_uploadedImageUrl != null &&
-                    titleController.text.isNotEmpty &&
-                    descriptionController
-                        .text
-                        .isNotEmpty &&
-                    locationController
-                        .text
-                        .isNotEmpty) {
-                  _submitReport(
-                    title: titleController.text,
-                    imageUrl: _uploadedImageUrl!,
-                    description:
-                        descriptionController.text,
-                    location: locationController.text,
-                  );
-                } else {
-                  _showError(
-                    "Please fill all details",
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade700,
-                padding: const EdgeInsets.symmetric(
-                  vertical: 15,
-                  horizontal: 20,
-                ),
-              ),
-              child: Text(
-                "Submit Report",
-                style: GoogleFonts.inter(
-                  textStyle: const TextStyle(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
                   ),
-                ),
+                  
+                  const SizedBox(height: 32),
+                ],
               ),
             ),
-
-            const SizedBox(height: 30),
           ],
         ),
       ),
@@ -788,46 +1039,169 @@ class _DashboardState extends State<Dashboard> {
   Widget _buildWelcomeBanner(double Function(double) responsiveFont) {
     final user = Supabase.instance.client.auth.currentUser;
     final email = user?.email ?? '';
-    final name = user?.userMetadata?['name'] ?? 'Student';
+    final name = _resolveStudentName(user);
 
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.blue.shade700, Colors.blue.shade500],
+          colors: [Colors.indigo.shade800, Colors.blue.shade600],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 6,
-            offset: Offset(0, 3),
+            color: Colors.indigo.shade800.withOpacity(0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            "Welcome, $name!",
-            style: GoogleFonts.inter(
-              fontSize: responsiveFont(18),
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.verified_rounded, color: Colors.amberAccent, size: 14),
+                      const SizedBox(width: 4),
+                      Text(
+                        "Verified Student",
+                        style: GoogleFonts.inter(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  "Welcome, $name!",
+                  style: GoogleFonts.inter(
+                    fontSize: responsiveFont(20),
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  email,
+                  style: GoogleFonts.inter(
+                    fontSize: responsiveFont(12),
+                    color: Colors.white.withOpacity(0.8),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            email,
-            style: GoogleFonts.inter(
-              fontSize: responsiveFont(12),
-              color: Colors.white70,
+          const SizedBox(width: 12),
+          GestureDetector(
+            onTap: () {
+              Navigator.pushNamed(context, '/studentprofile');
+            },
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: CircleAvatar(
+                radius: 30,
+                backgroundColor: Colors.white.withOpacity(0.2),
+                child: const Icon(
+                  Icons.person_rounded,
+                  size: 36,
+                  color: Colors.white,
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class DashedBorderPainter extends CustomPainter {
+  final Color color;
+  final double strokeWidth;
+  final double gap;
+  final double dash;
+  final double borderRadius;
+
+  DashedBorderPainter({
+    this.color = Colors.grey,
+    this.strokeWidth = 1.5,
+    this.gap = 4.0,
+    this.dash = 6.0,
+    this.borderRadius = 12.0,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = strokeWidth
+      ..style = PaintingStyle.stroke;
+
+    final rrect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, size.height),
+      Radius.circular(borderRadius),
+    );
+    final path = Path()..addRRect(rrect);
+
+    final dashPath = _buildDashPath(path, dash, gap);
+    canvas.drawPath(dashPath, paint);
+  }
+
+  Path _buildDashPath(Path source, double dashWidth, double gapWidth) {
+    final Path dest = Path();
+    for (final PathMetric metric in source.computeMetrics()) {
+      double distance = 0.0;
+      bool draw = true;
+      while (distance < metric.length) {
+        final double len = draw ? dashWidth : gapWidth;
+        if (distance + len >= metric.length) {
+          if (draw) {
+            dest.addPath(
+              metric.extractPath(distance, metric.length),
+              Offset.zero,
+            );
+          }
+          break;
+        }
+        if (draw) {
+          dest.addPath(
+            metric.extractPath(distance, distance + len),
+            Offset.zero,
+          );
+        }
+        distance += len;
+        draw = !draw;
+      }
+    }
+    return dest;
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

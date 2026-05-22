@@ -5,8 +5,10 @@ import 'dart:io';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:unisafe/admin/Admindashboardscreen.dart';
+import 'dialog_helper.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -25,6 +27,22 @@ class _AdminDashboardState
   @override
   void initState() {
     super.initState();
+    _checkRoleAndLoad();
+  }
+
+  Future<void> _checkRoleAndLoad() async {
+    final session = Supabase.instance.client.auth.currentSession;
+    if (session == null || session.user.userMetadata?['role'] == 'student') {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('isAdminLoggedIn', false);
+      try {
+        await Supabase.instance.client.auth.signOut();
+      } catch (_) {}
+      if (mounted) {
+        Navigator.pushNamedAndRemoveUntil(context, '/start', (route) => false);
+      }
+      return;
+    }
     fetchReports();
   }
 
@@ -38,6 +56,7 @@ class _AdminDashboardState
       final response = await supabase
           .from('incident_reports')
           .select('*')
+          .or('verified.eq.false,verified.is.null')
           .order(
             'created_at',
             ascending: false,
@@ -82,6 +101,14 @@ class _AdminDashboardState
                   "isNew":
                       report["isNew"] ??
                           false,
+
+                  "status":
+                      report["status"] ??
+                          "Pending",
+
+                  "adminRemark":
+                      report["admin_remark"] ??
+                          "",
                 };
               },
             )
@@ -96,6 +123,7 @@ class _AdminDashboardState
 
       _showSnackBar(
         "Failed to fetch reports",
+        type: SnackBarType.error,
       );
 
       print(e);
@@ -107,18 +135,21 @@ class _AdminDashboardState
   Future<void> deleteReport(
     int index,
   ) async {
-    final supabase =
-        Supabase.instance.client;
-
+    final supabase = Supabase.instance.client;
     final report = reports[index];
-
     final id = report["id"];
 
     try {
-      await supabase
+      final response = await supabase
           .from('incident_reports')
-          .delete()
-          .eq('id', id);
+          .update({'verified': true})
+          .eq('id', id)
+          .select();
+
+      print("Delete (verify) response: $response");
+      if (response.isEmpty) {
+        throw Exception("No rows were updated. Check Row Level Security policies.");
+      }
 
       setState(() {
         reports.removeAt(index);
@@ -126,47 +157,24 @@ class _AdminDashboardState
 
       _showSnackBar(
         "Report deleted successfully",
+        type: SnackBarType.success,
       );
     } catch (e) {
       _showSnackBar(
-        "Failed to delete report",
+        "Failed to delete report: $e",
+        type: SnackBarType.error,
       );
-
       print(e);
     }
   }
 
   // ================= SNACKBAR =================
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(context)
-        .showSnackBar(
-      SnackBar(
-        backgroundColor:
-            Colors.blue.shade700,
-
-        behavior:
-            SnackBarBehavior.floating,
-
-        shape:
-            RoundedRectangleBorder(
-          borderRadius:
-              BorderRadius.circular(14),
-        ),
-
-        margin: const EdgeInsets.all(
-          14,
-        ),
-
-        content: Text(
-          message,
-          style: GoogleFonts.inter(
-            color: Colors.white,
-            fontWeight:
-                FontWeight.w500,
-          ),
-        ),
-      ),
+  void _showSnackBar(String message, {SnackBarType type = SnackBarType.info}) {
+    showCustomSnackBar(
+      context,
+      message: message,
+      type: type,
     );
   }
 
@@ -202,78 +210,14 @@ class _AdminDashboardState
 
       onPopInvoked: (didPop) async {
         if (!didPop) {
-          await showDialog(
-            context: context,
-
-            builder: (context) {
-              return AlertDialog(
-                backgroundColor:
-                    Colors.white,
-
-                shape:
-                    RoundedRectangleBorder(
-                  borderRadius:
-                      BorderRadius.circular(
-                    20,
-                  ),
-                ),
-
-                title: Text(
-                  "Exit App",
-                  style:
-                      GoogleFonts.inter(
-                    fontWeight:
-                        FontWeight.bold,
-                  ),
-                ),
-
-                content: Text(
-                  "Are you sure you want to exit the app?",
-                  style:
-                      GoogleFonts.inter(),
-                ),
-
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(
-                        context,
-                      );
-                    },
-
-                    child: Text(
-                      "Cancel",
-                      style:
-                          GoogleFonts.inter(
-                        color:
-                            Colors.black87,
-                      ),
-                    ),
-                  ),
-
-                  ElevatedButton(
-                    style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          Colors.red,
-                    ),
-
-                    onPressed: () {
-                      exit(0);
-                    },
-
-                    child: Text(
-                      "Exit",
-                      style:
-                          GoogleFonts.inter(
-                        color:
-                            Colors.white,
-                      ),
-                    ),
-                  ),
-                ],
-              );
-            },
+          showCustomConfirmDialog(
+            context,
+            title: "Exit App",
+            content: "Are you sure you want to exit the app?",
+            confirmLabel: "Exit",
+            confirmColor: Colors.redAccent,
+            icon: Icons.exit_to_app_rounded,
+            onConfirm: () => exit(0),
           );
         }
       },
@@ -285,42 +229,39 @@ class _AdminDashboardState
         // ================= APPBAR =================
 
         appBar: AppBar(
-          automaticallyImplyLeading:
-              false,
-
-          elevation: 0,
-
-          backgroundColor:
-              Colors.blue.shade700,
-
-          title: Text(
-            "Admin Dashboard",
-
-            style: GoogleFonts.inter(
-              color: Colors.white,
-              fontWeight:
-                  FontWeight.bold,
-              fontSize:
-                  responsiveFont(20),
+          automaticallyImplyLeading: false,
+          elevation: 4,
+          shadowColor: Colors.blue.shade900.withOpacity(0.15),
+          shape: const RoundedRectangleBorder(
+            borderRadius: BorderRadius.vertical(
+              bottom: Radius.circular(24),
             ),
           ),
-
-          actions: [
-            IconButton(
-              onPressed: fetchReports,
-
-              icon: const Icon(
-                Icons.refresh_rounded,
-                color: Colors.white,
+          flexibleSpace: Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.indigo.shade800, Colors.blue.shade600],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: const BorderRadius.vertical(
+                bottom: Radius.circular(24),
               ),
             ),
-
+          ),
+          backgroundColor: Colors.transparent,
+          title: Text(
+            "Admin Dashboard",
+            style: GoogleFonts.inter(
+              color: Colors.white,
+              fontWeight: FontWeight.w800,
+              fontSize: responsiveFont(20),
+              letterSpacing: -0.5,
+            ),
+          ),
+          actions: [
             Padding(
-              padding:
-                  const EdgeInsets.only(
-                right: 14,
-              ),
-
+              padding: const EdgeInsets.only(right: 16),
               child: GestureDetector(
                 onTap: () {
                   Navigator.pushNamed(
@@ -328,12 +269,23 @@ class _AdminDashboardState
                     "/admin",
                   );
                 },
-
-                child: const CircleAvatar(
-                  radius: 18,
-                  backgroundImage:
-                      AssetImage(
-                    "assets/admin1.png",
+                child: Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white.withOpacity(0.8), width: 2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: const CircleAvatar(
+                    radius: 16,
+                    backgroundImage: AssetImage(
+                      "assets/admin1.png",
+                    ),
                   ),
                 ),
               ),
@@ -432,116 +384,66 @@ class _AdminDashboardState
                           // ================= STATS =================
 
                           Container(
-                            margin:
-                                const EdgeInsets.all(
-                              14,
-                            ),
-
-                            padding:
-                                const EdgeInsets.all(
-                              18,
-                            ),
-
-                            decoration:
-                                BoxDecoration(
-                              gradient:
-                                  LinearGradient(
-                                colors: [
-                                  Colors
-                                      .blue
-                                      .shade700,
-
-                                  Colors
-                                      .blue
-                                      .shade500,
-                                ],
+                            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            padding: const EdgeInsets.all(20),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [Colors.indigo.shade800, Colors.blue.shade600],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-
-                              borderRadius:
-                                  BorderRadius.circular(
-                                22,
-                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.indigo.shade800.withOpacity(0.3),
+                                  blurRadius: 18,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
-
                             child: Row(
                               children: [
                                 Container(
-                                  padding:
-                                      const EdgeInsets.all(
-                                    16,
-                                  ),
-
-                                  decoration:
-                                      BoxDecoration(
-                                    color: Colors
-                                        .white
-                                        .withOpacity(
-                                      0.2,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withOpacity(0.12),
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Colors.white.withOpacity(0.2),
+                                      width: 1.5,
                                     ),
-
-                                    shape:
-                                        BoxShape.circle,
                                   ),
-
-                                  child:
-                                      const Icon(
-                                    Icons
-                                        .report_gmailerrorred_rounded,
-
-                                    color:
-                                        Colors.white,
-
-                                    size:
-                                        34,
+                                  child: const Icon(
+                                    Icons.insights_rounded,
+                                    color: Colors.white,
+                                    size: 30,
                                   ),
                                 ),
-
-                                const SizedBox(
-                                  width: 18,
-                                ),
-
-                                Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment
-                                          .start,
-
-                                  children: [
-                                    Text(
-                                      "${reports.length}",
-
-                                      style:
-                                          GoogleFonts.inter(
-                                        fontSize:
-                                            28,
-
-                                        fontWeight:
-                                            FontWeight.bold,
-
-                                        color: Colors
-                                            .white,
-                                      ),
-                                    ),
-
-                                    const SizedBox(
-                                      height: 4,
-                                    ),
-
-                                    Text(
-                                      "Total Incident Reports",
-
-                                      style:
-                                          GoogleFonts.inter(
-                                        color: Colors
-                                            .white
-                                            .withOpacity(
-                                          0.9,
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        "${reports.length}",
+                                        style: GoogleFonts.inter(
+                                          fontSize: 32,
+                                          fontWeight: FontWeight.w900,
+                                          color: Colors.white,
+                                          letterSpacing: -0.5,
                                         ),
-
-                                        fontWeight:
-                                            FontWeight.w500,
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        "Total Incident Reports",
+                                        style: GoogleFonts.inter(
+                                          color: Colors.white.withOpacity(0.85),
+                                          fontWeight: FontWeight.w600,
+                                          fontSize: 14,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ],
                             ),
@@ -608,12 +510,23 @@ class _AdminDashboardState
                                       report[
                                           "isNew"],
 
+                                  status:
+                                      report[
+                                          "status"],
+
+                                  adminRemark:
+                                      report[
+                                          "adminRemark"],
+
                                   onDelete:
                                       () {
                                     deleteReport(
                                       index,
                                     );
                                   },
+
+                                  onRefresh:
+                                      fetchReports,
                                 );
                               },
                             ),

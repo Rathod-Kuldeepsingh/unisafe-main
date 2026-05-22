@@ -68,17 +68,27 @@ class Startedpage extends StatelessWidget {
                   subtitle: "Report incidents securely",
                   icon: Icons.person_outlined,
                   onTap: () async {
+                    final navigator = Navigator.of(context);
                     final prefs = await SharedPreferences.getInstance();
-                    final isStudentLoggedIn =
-                        prefs.getBool('isStudentLoggedIn') ?? false;
                     final session = Supabase.instance.client.auth.currentSession;
 
-                    if (!context.mounted) return;
-
-                    if (isStudentLoggedIn && session != null) {
-                      Navigator.pushNamed(context, '/student');
+                    if (session != null) {
+                      final role = session.user.userMetadata?['role'];
+                      if (role == 'student') {
+                        await prefs.setBool('isStudentLoggedIn', true);
+                        await prefs.setBool('isAdminLoggedIn', false);
+                        navigator.pushNamed('/student');
+                      } else {
+                        // Mismatched role: Admin logged in, but user wants student.
+                        // Sign out admin session first.
+                        await Supabase.instance.client.auth.signOut();
+                        await prefs.setBool('isStudentLoggedIn', false);
+                        await prefs.setBool('isAdminLoggedIn', false);
+                        navigator.pushNamed('/studentauth');
+                      }
                     } else {
-                      Navigator.pushNamed(context, '/studentauth');
+                      await prefs.setBool('isStudentLoggedIn', false);
+                      navigator.pushNamed('/studentauth');
                     }
                   },
                 ),
@@ -91,16 +101,27 @@ class Startedpage extends StatelessWidget {
                   subtitle: "Manage and review reports",
                   icon: Icons.security_outlined,
                   onTap: () async {
+                    final navigator = Navigator.of(context);
                     final prefs = await SharedPreferences.getInstance();
-                    final isAdminLoggedIn =
-                        prefs.getBool('isAdminLoggedIn') ?? false;
+                    final session = Supabase.instance.client.auth.currentSession;
 
-                    if (!context.mounted) return;
-
-                    if (isAdminLoggedIn) {
-                      Navigator.pushReplacementNamed(context, '/admindash');
+                    if (session != null) {
+                      final role = session.user.userMetadata?['role'];
+                      if (role != 'student') {
+                        await prefs.setBool('isAdminLoggedIn', true);
+                        await prefs.setBool('isStudentLoggedIn', false);
+                        navigator.pushNamed('/admindash');
+                      } else {
+                        // Mismatched role: Student logged in, but user wants admin.
+                        // Sign out student session first.
+                        await Supabase.instance.client.auth.signOut();
+                        await prefs.setBool('isStudentLoggedIn', false);
+                        await prefs.setBool('isAdminLoggedIn', false);
+                        navigator.pushNamed('/adminauth');
+                      }
                     } else {
-                      Navigator.pushNamed(context, '/adminauth');
+                      await prefs.setBool('isAdminLoggedIn', false);
+                      navigator.pushNamed('/adminauth');
                     }
                   },
                 ),

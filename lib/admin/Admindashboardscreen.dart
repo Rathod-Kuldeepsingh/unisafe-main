@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:unisafe/admin/full.dart';
+import 'dialog_helper.dart';
 
 class IncidentCard extends StatelessWidget {
   final int id;
@@ -14,7 +15,10 @@ class IncidentCard extends StatelessWidget {
   final double? longitude;
 
   final bool isNew;
+  final String status;
+  final String adminRemark;
   final VoidCallback onDelete;
+  final VoidCallback? onRefresh;
 
   const IncidentCard({
     super.key,
@@ -27,7 +31,10 @@ class IncidentCard extends StatelessWidget {
     required this.latitude,
     required this.longitude,
     this.isNew = false,
+    this.status = 'Pending',
+    this.adminRemark = '',
     required this.onDelete,
+    this.onRefresh,
   });
 
   @override
@@ -37,6 +44,22 @@ class IncidentCard extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
 
     double responsiveFont(double size) => screenWidth * (size / 375);
+
+    Color statusColor;
+    Color statusBgColor;
+    final displayStatus = (status.toLowerCase() == 'approved' || status.toLowerCase() == 'accepted')
+        ? 'Accepted'
+        : status;
+    if (status.toLowerCase() == 'approved' || status.toLowerCase() == 'accepted') {
+      statusColor = Colors.green.shade700;
+      statusBgColor = Colors.green.shade50;
+    } else if (status.toLowerCase() == 'rejected') {
+      statusColor = Colors.red.shade700;
+      statusBgColor = Colors.red.shade50;
+    } else {
+      statusColor = Colors.amber.shade800;
+      statusBgColor = Colors.amber.shade50;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
@@ -62,84 +85,35 @@ class IncidentCard extends StatelessWidget {
         ),
 
         confirmDismiss: (direction) async {
-          return await showDialog(
-            context: context,
-            builder: (ctx) {
-              return AlertDialog(
-                backgroundColor: Colors.white,
-
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(22),
-                ),
-
-                title: Text(
-                  "Delete Report?",
-                  style: GoogleFonts.inter(fontWeight: FontWeight.bold),
-                ),
-
-                content: Text(
-                  "Are you sure you want to delete this incident report?",
-                  style: GoogleFonts.inter(),
-                ),
-
-                actions: [
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(ctx, false);
-                    },
-                    child: Text(
-                      "Cancel",
-                      style: GoogleFonts.inter(color: Colors.grey.shade700),
-                    ),
-                  ),
-
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                    ),
-                    onPressed: () {
-                      Navigator.pop(ctx, true);
-                    },
-                    child: Text(
-                      "Delete",
-                      style: GoogleFonts.inter(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              );
+          bool confirm = false;
+          await showCustomConfirmDialog(
+            context,
+            title: "Delete Report?",
+            content: "Are you sure you want to delete this incident report?",
+            confirmLabel: "Delete",
+            confirmColor: Colors.red,
+            icon: Icons.delete_forever_rounded,
+            onConfirm: () {
+              confirm = true;
             },
           );
+          return confirm;
         },
 
         onDismissed: (direction) {
           onDelete();
-
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              backgroundColor: Colors.red,
-              behavior: SnackBarBehavior.floating,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(14),
-              ),
-              content: Text(
-                "Report deleted successfully",
-                style: GoogleFonts.inter(color: Colors.white),
-              ),
-            ),
+          showCustomSnackBar(
+            context,
+            message: "Report deleted successfully",
+            type: SnackBarType.success,
           );
         },
 
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
 
-          onTap: () {
-            Navigator.push(
+          onTap: () async {
+            final refreshed = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => IncidentDetailPage(
@@ -149,9 +123,14 @@ class IncidentCard extends StatelessWidget {
                   imageUrl: imageUrl,
                   location: location,
                   timeAgo: timeAgo,
+                  status: status,
+                  adminRemark: adminRemark,
                 ),
               ),
             );
+            if (refreshed == true && onRefresh != null) {
+              onRefresh!();
+            }
           },
 
           child: AnimatedContainer(
@@ -342,6 +321,54 @@ class IncidentCard extends StatelessWidget {
                           ),
                         ),
                       ),
+
+                    // ================= STATUS BADGE =================
+                    Positioned(
+                      top: 14,
+                      left: 14,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: statusBgColor,
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(color: statusColor.withOpacity(0.25)),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 6,
+                              offset: const Offset(0, 3),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              (status.toLowerCase() == 'approved' || status.toLowerCase() == 'accepted')
+                                  ? Icons.check_circle_rounded
+                                  : (status.toLowerCase() == 'rejected')
+                                      ? Icons.cancel_rounded
+                                      : Icons.pending_rounded,
+                              color: statusColor,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              displayStatus.toUpperCase(),
+                              style: GoogleFonts.inter(
+                                color: statusColor,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 10,
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
 
@@ -394,24 +421,21 @@ class IncidentCard extends StatelessWidget {
                       // ================= LOCATION =================
                       Container(
                         padding: const EdgeInsets.all(12),
-
                         decoration: BoxDecoration(
-                          color: Colors.blue.shade50,
-
+                          color: const Color(0xFF2C5364).withOpacity(0.06),
                           borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFF2C5364).withOpacity(0.1)),
                         ),
 
                         child: Column(
                           children: [
                             Row(
                               children: [
-                                Icon(
-                                  Icons.location_on_rounded,
-
-                                  color: Colors.blue.shade700,
-
-                                  size: 20,
-                                ),
+                                  const Icon(
+                                    Icons.location_on_rounded,
+                                    color: Color(0xFF2C5364),
+                                    size: 20,
+                                  ),
 
                                 const SizedBox(width: 8),
 

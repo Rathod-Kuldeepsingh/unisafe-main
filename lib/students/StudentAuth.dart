@@ -98,9 +98,21 @@ class _StudentAuthState extends State<StudentAuth> {
         Navigator.pop(context); // Close loading dialog
 
         if (res.user != null) {
+          final role = res.user!.userMetadata?['role'];
+          if (role != 'student') {
+            await supabase.auth.signOut();
+            _showError("This is an Admin account. Please use Admin Login.");
+            return;
+          }
+
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isStudentLoggedIn', true);
           await prefs.setBool('isAdminLoggedIn', false);
+
+          final name = res.user!.userMetadata?['name'] ?? res.user!.userMetadata?['full_name'];
+          if (name != null) {
+            await prefs.setString('studentName', name.toString().trim());
+          }
 
           _showSuccess("Login Successful");
 
@@ -126,6 +138,7 @@ class _StudentAuthState extends State<StudentAuth> {
           final prefs = await SharedPreferences.getInstance();
           await prefs.setBool('isStudentLoggedIn', true);
           await prefs.setBool('isAdminLoggedIn', false);
+          await prefs.setString('studentName', nameController.text.trim());
 
           _showSuccess("Registration Successful");
 
@@ -134,6 +147,9 @@ class _StudentAuthState extends State<StudentAuth> {
           _showError("Registration failed. Please try again.");
         }
       }
+    } on AuthException catch (e) {
+      Navigator.pop(context); // Close loading dialog
+      _showError(e.message);
     } catch (e) {
       Navigator.pop(context); // Close loading dialog
       _showError(e.toString().replaceAll("Exception: ", ""));

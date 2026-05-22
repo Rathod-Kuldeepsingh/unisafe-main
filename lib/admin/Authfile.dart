@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:unisafe/admin/adminscreen.dart';
+import 'dialog_helper.dart';
 
 
 class Authfile extends StatefulWidget {
@@ -24,40 +24,7 @@ class _AuthfileState extends State<Authfile> {
 
   Future<void> loginWithSupabase() async {
     try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) {
-          return AlertDialog(
-            backgroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            content: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 15, vertical: 7),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Platform.isIOS
-                      ? const CupertinoActivityIndicator(radius: 12)
-                      : CircularProgressIndicator(color: Colors.blue.shade700),
-                  SizedBox(width: 20),
-                  Expanded(
-                    child: Text(
-                      "Verifying User...",
-                      style: GoogleFonts.inter(fontSize: 14),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
-      );
+      showCustomLoader(context, message: "Verifying User...");
       final res = await Supabase.instance.client.auth.signInWithPassword(
         email: emailController.text.trim(),
         password: passwordController.text.trim(),
@@ -67,23 +34,27 @@ class _AuthfileState extends State<Authfile> {
       Navigator.pop(context); // Close dialog
 
       if (res.user != null) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const AdminDashboard()),
-        );
+        final role = res.user!.userMetadata?['role'];
+        if (role == 'student') {
+          await Supabase.instance.client.auth.signOut();
+          _showError("This is a Student account. Please use Student Login.");
+          return;
+        }
 
         // used as sharedpreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setBool('isAdminLoggedIn', true);
+        await prefs.setBool('isStudentLoggedIn', false);
         Navigator.pushReplacementNamed(context, '/admindash');
-
-
 
         // ignore: avoid_print
         print("Login successful");
       } else {
         _showError("Invalid credentials.");
       }
+    } on AuthException catch (e) {
+      Navigator.pop(context); // Close dialog
+      _showError(e.message);
     } catch (e) {
       Navigator.pop(context); // Close dialog
       _showError("Login Failed: ${e.toString()}");
@@ -91,16 +62,7 @@ class _AuthfileState extends State<Authfile> {
   }
 
   void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: GoogleFonts.inter(color: Colors.white)),
-        backgroundColor: Colors.blue.shade700,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 4),
-      ),
-    );
+    showCustomSnackBar(context, message: message, type: SnackBarType.error);
   }
 
   @override
