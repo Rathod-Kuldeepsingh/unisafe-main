@@ -1,8 +1,6 @@
-import 'package:awesome_snackbar_content/awesome_snackbar_content.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:unisafe/admin/full.dart';
-
 
 class IncidentCard extends StatelessWidget {
   final int id;
@@ -11,23 +9,14 @@ class IncidentCard extends StatelessWidget {
   final String imageUrl;
   final String location;
   final String timeAgo;
+
+  final double? latitude;
+  final double? longitude;
+
   final bool isNew;
   final VoidCallback onDelete;
 
-final snackBar = SnackBar(
-  elevation: 0,
-  behavior: SnackBarBehavior.floating,
-  duration: Duration(milliseconds: 700),
-  backgroundColor: Colors.transparent,
-  content: AwesomeSnackbarContent(
-    color: Colors.blue.shade700,
-    title: 'Hello!',
-    message: 'This is an awesome snackbar using a package! 🎉',
-    contentType: ContentType.success, // other options: failure, help, warning
-  ),
-);
-
-   IncidentCard({
+  const IncidentCard({
     super.key,
     required this.id,
     required this.title,
@@ -35,233 +24,576 @@ final snackBar = SnackBar(
     required this.imageUrl,
     required this.location,
     required this.timeAgo,
+    required this.latitude,
+    required this.longitude,
     this.isNew = false,
     required this.onDelete,
   });
 
-
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
+
     final screenWidth = MediaQuery.of(context).size.width;
 
     double responsiveFont(double size) => screenWidth * (size / 375);
 
-    return Dismissible(
-      key: Key(id.toString()),
-      direction: DismissDirection.endToStart,
-      background: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        padding: const EdgeInsets.only(right: 20),
-        alignment: Alignment.centerRight,
-        decoration: BoxDecoration(
-          color: Colors.red,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: const Icon(Icons.delete, color: Colors.white, size: 28),
-      ),
-      confirmDismiss: (direction) async {
-        return await showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            backgroundColor: Colors.white,
-            title: const Text("Confirm Deletion"),
-            content: const Text("Are you sure you want to delete this report?"),
-            actions: [
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blue.shade700,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 10,
-                    horizontal: 20,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx, false),
-                child: Text(
-                  "Cancel",
-                  style: GoogleFonts.inter(
-                    fontSize: responsiveFont(14),
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-              ),
-              TextButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.grey.shade100,
-                  padding: const EdgeInsets.symmetric(
-                    vertical: 10,
-                    horizontal: 20,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                onPressed: () => Navigator.pop(ctx, true),
-                child: Text(
-                  "Delete",
-                  style: GoogleFonts.inter(
-                    fontSize: responsiveFont(14),
-                    fontWeight: FontWeight.w500,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      onDismissed: (direction) {
-        onDelete(); // Call the deletion logic from parent
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text("Report deleted.")));
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeInOut,
-        child: InkWell(
-          onTap: () {
-             Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => IncidentDetailPage(
-        id: id,
-        title: title,
-        description: description,
-        imageUrl: imageUrl,
-        location: location,
-        timeAgo: timeAgo,
-      ),
-    ),
-  );
-          },
-          child: Card(
-            color: Colors.white,
-            elevation: 4,
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Dismissible(
+        key: Key(id.toString()),
+
+        direction: DismissDirection.endToStart,
+
+        background: Container(
+          padding: const EdgeInsets.only(right: 24),
+          alignment: Alignment.centerRight,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(22),
+            gradient: const LinearGradient(
+              colors: [Color(0xffef5350), Color(0xffe53935)],
             ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// Title Row
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          ),
+          child: const Icon(
+            Icons.delete_rounded,
+            color: Colors.white,
+            size: 30,
+          ),
+        ),
+
+        confirmDismiss: (direction) async {
+          return await showDialog(
+            context: context,
+            builder: (ctx) {
+              return AlertDialog(
+                backgroundColor: Colors.white,
+
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(22),
+                ),
+
+                title: Text(
+                  "Delete Report?",
+                  style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                ),
+
+                content: Text(
+                  "Are you sure you want to delete this incident report?",
+                  style: GoogleFonts.inter(),
+                ),
+
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx, false);
+                    },
+                    child: Text(
+                      "Cancel",
+                      style: GoogleFonts.inter(color: Colors.grey.shade700),
+                    ),
+                  ),
+
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx, true);
+                    },
+                    child: Text(
+                      "Delete",
+                      style: GoogleFonts.inter(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+
+        onDismissed: (direction) {
+          onDelete();
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+              content: Text(
+                "Report deleted successfully",
+                style: GoogleFonts.inter(color: Colors.white),
+              ),
+            ),
+          );
+        },
+
+        child: InkWell(
+          borderRadius: BorderRadius.circular(22),
+
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => IncidentDetailPage(
+                  id: id,
+                  title: title,
+                  description: description,
+                  imageUrl: imageUrl,
+                  location: location,
+                  timeAgo: timeAgo,
+                ),
+              ),
+            );
+          },
+
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+
+            decoration: BoxDecoration(
+              color: Colors.white,
+
+              borderRadius: BorderRadius.circular(22),
+
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.05),
+                  blurRadius: 18,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+                // ================= IMAGE =================
+                // ================= IMAGE =================
+                Stack(
+                  children: [
+                    ClipRRect(
+                      borderRadius: const BorderRadius.only(
+                        topLeft: Radius.circular(22),
+                        topRight: Radius.circular(22),
+                      ),
+
+                      child: imageUrl.isNotEmpty
+                          ? FadeInImage.assetNetwork(
+                              placeholder: "assets/loading.gif",
+
+                              image: imageUrl,
+
+                              height: screenHeight * 0.24,
+
+                              width: double.infinity,
+
+                              fit: BoxFit.cover,
+
+                              imageErrorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  height: screenHeight * 0.24,
+
+                                  width: double.infinity,
+
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade200,
+                                  ),
+
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+
+                                    children: [
+                                      Icon(
+                                        Icons.broken_image_rounded,
+                                        size: 55,
+                                        color: Colors.grey.shade500,
+                                      ),
+
+                                      const SizedBox(height: 10),
+
+                                      Text(
+                                        "Image not available",
+
+                                        style: GoogleFonts.inter(
+                                          color: Colors.grey.shade600,
+
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            )
+                          : Container(
+                              height: screenHeight * 0.24,
+
+                              width: double.infinity,
+
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                              ),
+
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+
+                                children: [
+                                  Icon(
+                                    Icons.image_not_supported,
+                                    size: 55,
+                                    color: Colors.grey.shade500,
+                                  ),
+
+                                  const SizedBox(height: 10),
+
+                                  Text(
+                                    "No Image Found",
+
+                                    style: GoogleFonts.inter(
+                                      color: Colors.grey.shade600,
+
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+
+                    // ================= TOP GRADIENT =================
+                    Positioned(
+                      top: 0,
+                      left: 0,
+                      right: 0,
+
+                      child: Container(
+                        height: 90,
+
+                        decoration: BoxDecoration(
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(22),
+                            topRight: Radius.circular(22),
+                          ),
+
+                          gradient: LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+
+                            colors: [
+                              Colors.black.withOpacity(0.45),
+
+                              Colors.transparent,
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    // ================= NEW BADGE =================
+                    if (isNew)
+                      Positioned(
+                        top: 14,
+                        right: 14,
+
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [Color(0xffef5350), Color(0xffe53935)],
+                            ),
+
+                            borderRadius: BorderRadius.circular(30),
+                          ),
+
+                          child: Row(
+                            children: [
+                              const Icon(
+                                Icons.fiber_new,
+                                color: Colors.white,
+                                size: 16,
+                              ),
+
+                              const SizedBox(width: 4),
+
+                              Text(
+                                "NEW",
+
+                                style: GoogleFonts.inter(
+                                  color: Colors.white,
+
+                                  fontWeight: FontWeight.bold,
+
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+
+                // ================= CONTENT =================
+                Padding(
+                  padding: const EdgeInsets.all(16),
+
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+
                     children: [
+                      // ================= TITLE =================
                       Text(
                         title.toUpperCase(),
+
+                        maxLines: 1,
+
+                        overflow: TextOverflow.ellipsis,
+
                         style: GoogleFonts.inter(
-                          fontSize: responsiveFont(14),
+                          fontSize: responsiveFont(15),
+
                           fontWeight: FontWeight.bold,
+
                           color: Colors.black87,
                         ),
                       ),
-                      if (isNew)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child:  Text(
-                            "NEW",
-                            style: TextStyle(color: Colors.white, fontSize: responsiveFont(12)),
-                          ),
-                        ),
-                    ],
-                  ),
-                   SizedBox(height: screenHeight*0.020),
 
-                  /// Image & Description
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          imageUrl,
-                          width: screenWidth*0.30,
-                          height: screenHeight*0.10,
-                          fit: BoxFit.cover,
+                      const SizedBox(height: 12),
+
+                      // ================= DESCRIPTION =================
+                      Text(
+                        description,
+
+                        maxLines: 3,
+
+                        overflow: TextOverflow.ellipsis,
+
+                        style: GoogleFonts.inter(
+                          fontSize: responsiveFont(13),
+
+                          height: 1.5,
+
+                          color: Colors.grey.shade700,
                         ),
                       ),
-                       SizedBox(width: screenWidth*0.020),
-                      Expanded(
-                        child: Text(
-                          description,
-                          style: GoogleFonts.inter(
-                            fontSize: responsiveFont(13),
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
+
+                      const SizedBox(height: 18),
+
+                      // ================= LOCATION =================
+                      Container(
+                        padding: const EdgeInsets.all(12),
+
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+
+                          borderRadius: BorderRadius.circular(16),
                         ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: screenHeight*0.020),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on,
-                            size: 20,
-                            color: Colors.grey,
-                          ),
-                           SizedBox(width:screenWidth*0.020 ),
-                          Flexible(
-                            child: Text(
-                              location.toUpperCase(),
-                              style: GoogleFonts.inter(
-                                fontSize: responsiveFont(11),
-                                color: Colors.grey.shade700,
+
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Icon(
+                                  Icons.location_on_rounded,
+
+                                  color: Colors.blue.shade700,
+
+                                  size: 20,
+                                ),
+
+                                const SizedBox(width: 8),
+
+                                Expanded(
+                                  child: Text(
+                                    location,
+
+                                    maxLines: 2,
+
+                                    overflow: TextOverflow.ellipsis,
+
+                                    style: GoogleFonts.inter(
+                                      fontSize: responsiveFont(12),
+
+                                      fontWeight: FontWeight.w600,
+
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                            // ================= LAT LNG =================
+                            if (latitude != null && longitude != null) ...[
+                              const SizedBox(height: 10),
+
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+
+                                        children: [
+                                          Text(
+                                            "Latitude",
+
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+
+                                          const SizedBox(height: 4),
+
+                                          Text(
+                                            latitude!.toStringAsFixed(5),
+
+                                            style: GoogleFonts.inter(
+                                              fontWeight: FontWeight.bold,
+
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+
+                                  const SizedBox(width: 10),
+
+                                  Expanded(
+                                    child: Container(
+                                      padding: const EdgeInsets.all(10),
+
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+
+                                        children: [
+                                          Text(
+                                            "Longitude",
+
+                                            style: GoogleFonts.inter(
+                                              fontSize: 11,
+
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+
+                                          const SizedBox(height: 4),
+
+                                          Text(
+                                            longitude!.toStringAsFixed(5),
+
+                                            style: GoogleFonts.inter(
+                                              fontWeight: FontWeight.bold,
+
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
                               ),
-                              overflow: TextOverflow.ellipsis,
-                              maxLines: 2,
-                              softWrap: false,
+                            ],
+                          ],
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // ================= FOOTER =================
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.access_time,
+                                size: 18,
+                                color: Colors.grey.shade600,
+                              ),
+
+                              const SizedBox(width: 6),
+
+                              Text(
+                                timeAgo,
+
+                                style: GoogleFonts.inter(
+                                  fontSize: 12,
+
+                                  color: Colors.grey.shade700,
+                                ),
+                              ),
+                            ],
+                          ),
+
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 6,
+                            ),
+
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+
+                              borderRadius: BorderRadius.circular(30),
+                            ),
+
+                            child: Text(
+                              "ID #$id",
+
+                              style: GoogleFonts.inter(
+                                fontWeight: FontWeight.w600,
+
+                                fontSize: 11,
+
+                                color: Colors.black87,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                     SizedBox(height: screenHeight*0.010,),
-                      Text("Time & Date :$timeAgo",
-                        style: GoogleFonts.inter(
-                          fontSize: responsiveFont(12.5),
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-
-                      Text(
-                        "ID: $id",
-                        style: GoogleFonts.inter(
-                          fontSize: responsiveFont(12.4),
-                          color: Colors.grey[600],
-                        ),
-                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
   }
-
-  
 }
-

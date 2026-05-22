@@ -8,16 +8,18 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:unisafe/admin/Admindashboardscreen.dart';
 
-
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
 
   @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
+  State<AdminDashboard> createState() =>
+      _AdminDashboardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class _AdminDashboardState
+    extends State<AdminDashboard> {
   List<Map<String, dynamic>> reports = [];
+
   bool isLoading = true;
 
   @override
@@ -26,207 +28,597 @@ class _AdminDashboardState extends State<AdminDashboard> {
     fetchReports();
   }
 
+  // ================= FETCH REPORTS =================
+
   Future<void> fetchReports() async {
-    final supabase = Supabase.instance.client;
+    try {
+      final supabase =
+          Supabase.instance.client;
 
-    final response = await supabase
-        .from('incident_reports')
-        .select('*')
-        .order('created_at', ascending: false);
+      final response = await supabase
+          .from('incident_reports')
+          .select('*')
+          .order(
+            'created_at',
+            ascending: false,
+          );
 
-    setState(() {
-      reports = response.map<Map<String, dynamic>>((report) {
-        return {
-          "id": report["id"] ?? "",
-          "title": report["title"] ?? "Untitled Report",
-          "description": report["description"] ?? "",
-          "imageUrl": report["image_url"] ?? "",
-          "location": report["location"] ?? "",
-          "created_at": report["created_at"] ?? "",
-          "isNew": report["isNew"] ?? false,
-        };
-      }).toList();
+      setState(() {
+        reports = response
+            .map<Map<String, dynamic>>(
+              (report) {
+                return {
+                  "id":
+                      report["id"] ?? 0,
 
-      isLoading = false;
-    });
+                  "title":
+                      report["title"] ??
+                          "Untitled",
+
+                  "description":
+                      report[
+                              "description"] ??
+                          "",
+
+                  "imageUrl":
+                      report["image_url"] ??
+                          "",
+
+                  "location":
+                      report["location"] ??
+                          "",
+
+                  "created_at":
+                      report[
+                              "created_at"] ??
+                          "",
+
+                  "latitude":
+                      report["latitude"],
+
+                  "longitude":
+                      report["longitude"],
+
+                  "isNew":
+                      report["isNew"] ??
+                          false,
+                };
+              },
+            )
+            .toList();
+
+        isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+
+      _showSnackBar(
+        "Failed to fetch reports",
+      );
+
+      print(e);
+    }
   }
 
-  Future<void> deleteReport(int index) async {
-    final supabase = Supabase.instance.client;
+  // ================= DELETE REPORT =================
+
+  Future<void> deleteReport(
+    int index,
+  ) async {
+    final supabase =
+        Supabase.instance.client;
+
     final report = reports[index];
+
     final id = report["id"];
 
     try {
-      await supabase.from('incident_reports').delete().eq('id', id);
+      await supabase
+          .from('incident_reports')
+          .delete()
+          .eq('id', id);
 
       setState(() {
         reports.removeAt(index);
       });
-      _showError("succesfully delete Report");
+
+      _showSnackBar(
+        "Report deleted successfully",
+      );
     } catch (e) {
-      _showError("Failed to delete Report");
+      _showSnackBar(
+        "Failed to delete report",
+      );
+
+      print(e);
     }
   }
 
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
+  // ================= SNACKBAR =================
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
-        content: Text(message, style: GoogleFonts.inter(color: Colors.white)),
-        backgroundColor: Colors.blue.shade700,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        duration: const Duration(seconds: 2),
+        backgroundColor:
+            Colors.blue.shade700,
+
+        behavior:
+            SnackBarBehavior.floating,
+
+        shape:
+            RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(14),
+        ),
+
+        margin: const EdgeInsets.all(
+          14,
+        ),
+
+        content: Text(
+          message,
+          style: GoogleFonts.inter(
+            color: Colors.white,
+            fontWeight:
+                FontWeight.w500,
+          ),
+        ),
       ),
     );
   }
 
+  // ================= FORMAT DATE =================
+
+  String formatDate(String rawDate) {
+    try {
+      final date =
+          DateTime.parse(rawDate);
+
+      return
+          "${date.day}/${date.month}/${date.year}";
+    } catch (e) {
+      return rawDate;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight =
+        MediaQuery.of(context).size.height;
 
-    double responsiveFont(double size) => screenWidth * (size / 375);
+    final screenWidth =
+        MediaQuery.of(context).size.width;
+
+    double responsiveFont(
+      double size,
+    ) =>
+        screenWidth * (size / 375);
 
     return PopScope(
       canPop: false,
+
       onPopInvoked: (didPop) async {
         if (!didPop) {
-          final shouldExit = await showDialog<bool>(
+          await showDialog(
             context: context,
-            builder: (context) => AlertDialog(
-              backgroundColor: Colors.white,
-              title: const Text("Exit App"),
-              content: const Text("Are you sure you want to exit the app?"),
-              actions: [
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blue.shade700,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 20,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: Text(
-                    "Cancel",
-                    style: GoogleFonts.inter(
-                      fontSize: responsiveFont(14),
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-                ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey.shade100,
-                    padding: const EdgeInsets.symmetric(
-                      vertical: 10,
-                      horizontal: 20,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  onPressed: () => exit(0),
 
-                  child: Text(
-                    "Exit",
-                    style: GoogleFonts.inter(
-                      fontSize: responsiveFont(14),
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black,
-                    ),
+            builder: (context) {
+              return AlertDialog(
+                backgroundColor:
+                    Colors.white,
+
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    20,
                   ),
                 ),
-              ],
-            ),
+
+                title: Text(
+                  "Exit App",
+                  style:
+                      GoogleFonts.inter(
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
+                ),
+
+                content: Text(
+                  "Are you sure you want to exit the app?",
+                  style:
+                      GoogleFonts.inter(),
+                ),
+
+                actions: [
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(
+                        context,
+                      );
+                    },
+
+                    child: Text(
+                      "Cancel",
+                      style:
+                          GoogleFonts.inter(
+                        color:
+                            Colors.black87,
+                      ),
+                    ),
+                  ),
+
+                  ElevatedButton(
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          Colors.red,
+                    ),
+
+                    onPressed: () {
+                      exit(0);
+                    },
+
+                    child: Text(
+                      "Exit",
+                      style:
+                          GoogleFonts.inter(
+                        color:
+                            Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         }
       },
+
       child: Scaffold(
-        backgroundColor: Colors.grey.shade100,
+        backgroundColor:
+            Colors.grey.shade100,
+
+        // ================= APPBAR =================
+
         appBar: AppBar(
-          automaticallyImplyLeading: false,
-          iconTheme: const IconThemeData(color: Colors.white),
-          backgroundColor: Colors.blue.shade700,
-          elevation: 1,
+          automaticallyImplyLeading:
+              false,
+
+          elevation: 0,
+
+          backgroundColor:
+              Colors.blue.shade700,
+
           title: Text(
-            'Admin Dashboard',
+            "Admin Dashboard",
+
             style: GoogleFonts.inter(
-              fontSize: responsiveFont(20),
-              fontWeight: FontWeight.bold,
               color: Colors.white,
+              fontWeight:
+                  FontWeight.bold,
+              fontSize:
+                  responsiveFont(20),
             ),
           ),
+
           actions: [
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(
-                    Icons.notifications_none,
-                    color: Colors.white,
-                    size: 25,
+            IconButton(
+              onPressed: fetchReports,
+
+              icon: const Icon(
+                Icons.refresh_rounded,
+                color: Colors.white,
+              ),
+            ),
+
+            Padding(
+              padding:
+                  const EdgeInsets.only(
+                right: 14,
+              ),
+
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pushNamed(
+                    context,
+                    "/admin",
+                  );
+                },
+
+                child: const CircleAvatar(
+                  radius: 18,
+                  backgroundImage:
+                      AssetImage(
+                    "assets/admin1.png",
                   ),
-                  onPressed: () {},
                 ),
-                Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: InkWell(
-                    onTap: () {
-                      Navigator.pushNamed(context, "/admin");
-                    },
-                    child: const CircleAvatar(
-                      backgroundColor: Colors.white,
-                      backgroundImage: AssetImage("assets/admin1.png"),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ],
         ),
+
+        // ================= BODY =================
+
         body: isLoading
             ? Center(
                 child: Platform.isIOS
-                    ? const CupertinoActivityIndicator(radius: 12)
-                    : const CircularProgressIndicator(color: Colors.blue),
+                    ? const CupertinoActivityIndicator(
+                        radius: 14,
+                      )
+                    : CircularProgressIndicator(
+                        color: Colors
+                            .blue.shade700,
+                      ),
               )
+
             : RefreshIndicator(
-                backgroundColor: Colors.white,
-                color: Colors.blue.shade700,
                 onRefresh: fetchReports,
+
+                color:
+                    Colors.blue.shade700,
+
+                backgroundColor:
+                    Colors.white,
+
                 child: reports.isEmpty
+
+                    // ================= EMPTY =================
+
                     ? ListView(
-                        children: const [
+                        children: [
+                          SizedBox(
+                            height:
+                                screenHeight *
+                                    0.18,
+                          ),
+
+                          Icon(
+                            Icons
+                                .report_problem_outlined,
+                            size: 90,
+                            color:
+                                Colors.grey
+                                    .shade400,
+                          ),
+
+                          const SizedBox(
+                            height: 18,
+                          ),
+
                           Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(20.0),
-                              child: Text("No reports found."),
+                            child: Text(
+                              "No Reports Found",
+
+                              style:
+                                  GoogleFonts.inter(
+                                fontSize: 20,
+                                fontWeight:
+                                    FontWeight
+                                        .bold,
+
+                                color: Colors
+                                    .black87,
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height: 8,
+                          ),
+
+                          Center(
+                            child: Text(
+                              "All incident reports will appear here",
+
+                              style:
+                                  GoogleFonts.inter(
+                                color: Colors
+                                    .grey
+                                    .shade600,
+                              ),
                             ),
                           ),
                         ],
                       )
-                    : ListView.builder(
-                        itemCount: reports.length,
-                        itemBuilder: (context, index) {
-                          final report = reports[index];
-                          return IncidentCard(
-                            id: report["id"],
-                            title: report["title"],
-                            description: report["description"],
-                            imageUrl: report["imageUrl"],
-                            location: report["location"],
-                            isNew: report["isNew"],
-                            timeAgo: report["created_at"],
-                            onDelete: () {
-                              deleteReport(index);
-                            },
-                          );
-                        },
+
+                    // ================= REPORTS =================
+
+                    : Column(
+                        children: [
+                          // ================= STATS =================
+
+                          Container(
+                            margin:
+                                const EdgeInsets.all(
+                              14,
+                            ),
+
+                            padding:
+                                const EdgeInsets.all(
+                              18,
+                            ),
+
+                            decoration:
+                                BoxDecoration(
+                              gradient:
+                                  LinearGradient(
+                                colors: [
+                                  Colors
+                                      .blue
+                                      .shade700,
+
+                                  Colors
+                                      .blue
+                                      .shade500,
+                                ],
+                              ),
+
+                              borderRadius:
+                                  BorderRadius.circular(
+                                22,
+                              ),
+                            ),
+
+                            child: Row(
+                              children: [
+                                Container(
+                                  padding:
+                                      const EdgeInsets.all(
+                                    16,
+                                  ),
+
+                                  decoration:
+                                      BoxDecoration(
+                                    color: Colors
+                                        .white
+                                        .withOpacity(
+                                      0.2,
+                                    ),
+
+                                    shape:
+                                        BoxShape.circle,
+                                  ),
+
+                                  child:
+                                      const Icon(
+                                    Icons
+                                        .report_gmailerrorred_rounded,
+
+                                    color:
+                                        Colors.white,
+
+                                    size:
+                                        34,
+                                  ),
+                                ),
+
+                                const SizedBox(
+                                  width: 18,
+                                ),
+
+                                Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment
+                                          .start,
+
+                                  children: [
+                                    Text(
+                                      "${reports.length}",
+
+                                      style:
+                                          GoogleFonts.inter(
+                                        fontSize:
+                                            28,
+
+                                        fontWeight:
+                                            FontWeight.bold,
+
+                                        color: Colors
+                                            .white,
+                                      ),
+                                    ),
+
+                                    const SizedBox(
+                                      height: 4,
+                                    ),
+
+                                    Text(
+                                      "Total Incident Reports",
+
+                                      style:
+                                          GoogleFonts.inter(
+                                        color: Colors
+                                            .white
+                                            .withOpacity(
+                                          0.9,
+                                        ),
+
+                                        fontWeight:
+                                            FontWeight.w500,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+
+                          // ================= LIST =================
+
+                          Expanded(
+                            child: ListView.builder(
+                              physics:
+                                  const AlwaysScrollableScrollPhysics(),
+
+                              padding:
+                                  const EdgeInsets.only(
+                                bottom: 20,
+                              ),
+
+                              itemCount:
+                                  reports.length,
+
+                              itemBuilder:
+                                  (
+                                context,
+                                index,
+                              ) {
+                                final report =
+                                    reports[index];
+
+                                return IncidentCard(
+                                  id:
+                                      report["id"],
+
+                                  title:
+                                      report[
+                                          "title"],
+
+                                  description:
+                                      report[
+                                          "description"],
+
+                                  imageUrl:
+                                      report[
+                                          "imageUrl"],
+
+                                  location:
+                                      report[
+                                          "location"],
+
+                                  timeAgo:
+                                      formatDate(
+                                    report[
+                                        "created_at"],
+                                  ),
+
+                                  latitude:
+                                      report[
+                                          "latitude"],
+
+                                  longitude:
+                                      report[
+                                          "longitude"],
+
+                                  isNew:
+                                      report[
+                                          "isNew"],
+
+                                  onDelete:
+                                      () {
+                                    deleteReport(
+                                      index,
+                                    );
+                                  },
+                                );
+                              },
+                            ),
+                          ),
+                        ],
                       ),
               ),
       ),

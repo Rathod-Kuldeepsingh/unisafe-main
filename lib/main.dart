@@ -13,6 +13,11 @@ import 'package:unisafe/welcome/Startedpage.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Supabase.initialize(
+    url: 'https://jwsibafhwkujlpgzqaph.supabase.co',
+    anonKey: 'sb_publishable_Ann0sNjsSu8QeM9KVGo72Q_g1gz9pvv',
+  );
+
   runApp(MyApp());
 }
 
